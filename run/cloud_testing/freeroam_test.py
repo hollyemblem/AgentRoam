@@ -9,10 +9,10 @@ import re
 import mss
 from dotenv import load_dotenv
 from pathlib import Path
-from langtrace_python_sdk import langtrace
 from opentelemetry import trace
 
-from openai import OpenAI
+import patch_pydantic  # noqa: F401
+from langfuse.openai import openai
 from google import genai
 from google.genai import types
 import anthropic              # Claude
@@ -22,7 +22,11 @@ import time
 
 # ------------ CONFIG & SETUP ------------
 load_dotenv(dotenv_path=Path.cwd().parent / ".env")
-langtrace.init(api_key=os.getenv("LANGTRACE_API_KEY"), write_spans_to_console=False)
+
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
+LANGFUSE_BASE_URL = os.getenv("LANGFUSE_BASE_URL") # 🇪🇺 EU region
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -195,9 +199,7 @@ def call_llm(folder_name, llm_value, token, prompt):
 
         elif llm_value == "gpt-5.2-2025-12-11":
             global last_image_bytes
-
-            client = OpenAI(api_key=token)
-
+            client = openai.OpenAI(api_key=token)
             content = [
                 {
                     "type": "input_text",
@@ -275,8 +277,6 @@ def call_llm(folder_name, llm_value, token, prompt):
 
         else:
             raise ValueError(f"Unsupported llm_value: {llm_value}")
-
-        span.set_attribute("ctx.next_action", result)
         return result
 
 
