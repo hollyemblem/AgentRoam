@@ -10,6 +10,8 @@ import mss
 from dotenv import load_dotenv
 from pathlib import Path
 from opentelemetry import trace
+from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+
 
 import patch_pydantic  # noqa: F401
 from langfuse.openai import openai
@@ -165,12 +167,37 @@ def directions_executor(direction,length):
         print(f"Invalid action: {direction}")
 
 
+def build_agent_prompt(base_prompt, recent_actions):
+    """
+    Prompt logic that is MODEL-AGNOSTIC.
+    """
+    return (
+        base_prompt
+        + "\n\n"
+        + "### LATEST_INPUTS\n"
+        + f"Your most recent 5 actions were: {recent_actions}\n"
+        + "Use these to determine whether you are stuck or progressing."
+    )
+
+
+def build_image_comparison_instruction():
+    """
+    Shared semantic meaning of multiple images.
+    """
+    return (
+        "### IMAGE COMPARISON OF RECENT MOVEMENT\n"
+        "You are given two images.\n"
+        "The first image is the PREVIOUS frame.\n"
+        "The second image is the CURRENT frame.\n"
+        "Compare them to determine whether movement occurred."
+    )
 
 # -----------------------------------------------------------
 #                     LLM DISPATCHER
 # -----------------------------------------------------------
 
 def call_llm(folder_name, llm_value, token, prompt):
+    global last_image_bytes
     image_path = get_latest_image(os.path.join(folder_name, "*.png"))
     with open(image_path, "rb") as f:
         image_bytes = f.read()
@@ -198,14 +225,13 @@ def call_llm(folder_name, llm_value, token, prompt):
             result = resp.text.strip()
 
         elif llm_value == "gpt-5.2-2025-12-11":
-            global last_image_bytes
             client = openai.OpenAI(api_key=token)
             content = [
                 {
                     "type": "input_text",
                     "text": (
                         prompt
-                        + "\n\n"
+                         + "\n\n ### IMAGE COMPARISON OF RECENT MOVEMENT"
                         + "You are given two images. "
                         + "The first is the PREVIOUS frame. "
                         + "The second is the CURRENT frame. "
@@ -243,19 +269,61 @@ def call_llm(folder_name, llm_value, token, prompt):
 
         # ---------- Claude ----------
         elif llm_value == "claude-sonnet-4-5":
+            AnthropicInstrumentor().instrument()
             client = anthropic.Anthropic(api_key=token)
+
+            content = [
+                {
+                    "type": "text",
+                    "text": (
+                        prompt
+                        + "\n\n ### IMAGE COMPARISON OF RECENT MOVEMENT"
+                        + "You are given two images.\n"
+                        + "The first image is the PREVIOUS frame.\n"
+                        + "The second image is the CURRENT frame.\n"
+                        + "Compare them and determine whether movement occurred."
+                    ),
+                }
+            ]
+
+            # ---- previous image (if available) ----
+            if last_image_bytes is not None:
+                prev_b64 = base64.b64encode(last_image_bytes).decode("utf-8")
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": PNG_MIME,
+                        "data": prev_b64,
+                    },
+                })
+
+            # ---- current image ----
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": PNG_MIME,
+                    "data": image_b64,
+                },
+            })
+
             resp = client.messages.create(
                 model="claude-sonnet-4-5",
                 max_tokens=1024,
                 messages=[{
                     "role": "user",
-                    "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": PNG_MIME, "data": image_b64}},
-                        {"type": "text", "text": prompt},
-                    ],
+                    "content": content,
                 }],
             )
-            result = "".join([b.text for b in resp.content if b.type == "text"]).strip()
+
+            result = "".join(
+                block.text for block in resp.content if block.type == "text"
+            ).strip()
+
+            # ---- update memory ----
+            last_image_bytes = image_bytes
+
 
         # ---------- Llama ----------
         elif llm_value == "llama-4-scout":
@@ -302,13 +370,13 @@ def grab_screenshot():
 # -----------------------------------------------------------
 
 def main():
-    global  last_save_time, last_photo_time
+    global  last_save_time, last_photo_time, last_image_bytes
     list_of_actions = list()
 
     LLM_ROTATION = [
         #("fake", 'xummy', 'TAKE_PHOTO:0:Looks nice')
-        ("gpt-5.2-2025-12-11", os.getenv("OPEN_AI_TOKEN"), os.getenv("OPEN_AI_FREE_ROAM_PROMPT")),
-        # ("claude-sonnet-4-5", os.getenv("CLAUDE_API_KEY"), os.getenv("CLAUDE_PROMPT")),
+        ("gpt-5.2-2025-12-11", os.getenv("OPEN_AI_TOKEN"), os.getenv("WD_FREEROAM_PROMPT")) #,
+        #("claude-sonnet-4-5", os.getenv("CLAUDE_API_KEY"), os.getenv("WD_FREEROAM_PROMPT")) #,
         # ("llama-4-scout", os.getenv("GROQ_API_KEY"), os.getenv("LLAMA_PROMPT")),
     ]
 
@@ -325,9 +393,9 @@ def main():
             for llm_name, key, prompt in LLM_ROTATION:
                 now = time.time()
                 print(f"\n🔍 Roaming with: {llm_name}")
-                prompt = (
-                        prompt +  f" \n \n ### LATEST_INPUTS: Here are your most recent 5 actions, use these to evaluate if you're getting stuck: {list_of_actions[-5:]}"         
-                   )
+                prompt = build_agent_prompt(
+                    base_prompt=prompt,
+                    recent_actions=list_of_actions[-5:] )
                 direction_text = call_llm(CAPTURE_DIR, llm_name, key, prompt)
                 parts = direction_text.split(":", 2)
                 print(parts)
