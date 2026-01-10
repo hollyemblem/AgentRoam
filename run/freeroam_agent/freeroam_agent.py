@@ -58,14 +58,15 @@ class FreeRoamAgent:
 
     print("""\
 
- █████╗  ██████╗ ███████╗███╗   ██╗████████╗██████╗ ██╗   ██╗██████╗ ███████╗
-██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝██╔══██╗██║   ██║██╔══██╗██╔════╝
-███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ██████╔╝██║   ██║██████╔╝█████╗  
-██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ██╔══██╗██║   ██║██╔══██╗██╔══╝  
-██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ██║  ██║╚██████╔╝██████╔╝███████╗
-╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
+ █████╗  ██████╗  ███████╗ ███╗   ██╗ ████████╗ ██████╗  ██████╗  █████╗  ███╗   ███╗
+██╔══██╗ ██╔════╝ ██╔════╝ ████╗  ██║ ╚══██╔══╝ ██╔══██╗ ██╔═══██╗ ██╔══██╗ ████╗ ████║
+███████║ ██║  ███╗█████╗   ██╔██╗ ██║    ██║    ██████╔╝ ██║   ██║ ███████║ ██╔████╔██║
+██╔══██║ ██║   ██║██╔══╝   ██║╚██╗██║    ██║    ██╔══██╗ ██║   ██║ ██╔══██║ ██║╚██╔╝██║
+██║  ██║ ╚██████╔╝███████╗ ██║ ╚████║    ██║    ██║  ██║ ╚██████╔╝ ██║  ██║ ██║ ╚═╝ ██║
+╚═╝  ╚═╝  ╚═════╝ ╚══════╝ ╚═╝  ╚═══╝    ╚═╝    ╚═╝  ╚═╝  ╚═════╝  ╚═╝  ╚═╝ ╚═╝     ╚═╝
 
-            :: AGENTRUBE ONLINE ::
+
+            :: AGENTROAM ONLINE ::
      [ Autonomous navigation engaged ]
      [ Selfie smile activated     ]
      [ Awaiting vector instructions  ]
@@ -139,11 +140,17 @@ class FreeRoamAgent:
             self.take_photo()
 
     def take_photo(self):
+        self.tap_key(Key.enter)
+        self.tap_key(Key.down)
+        self.tap_key(Key.down)
+        self.tap_key(Key.down)
+        self.tap_key(Key.space,hold=1, gap=0.4)
+        self.tap_key(Key.space,hold=1, gap=0.4)
         img = self.grab_screenshot()
-        self.tap_char("c", 1)
-        self.tap_char("j", 1)
+        self.tap_char('c', 1)
+        self.tap_char('j',1)
         ts = time.strftime("%Y%m%d_%H%M%S")
-        out = os.path.join(os.getenv("SELFIE_CAPTURES"), f"freeroam_agent_{ts}.png")
+        out = os.path.join(os.getenv("SELFIE_CAPTURES") , f"freeroam_agent{ts}.png")
         cv2.imwrite(out, img)
         self.last_save_time = time.time()
 
@@ -159,6 +166,10 @@ class FreeRoamAgent:
             + f"Your most recent 5 actions were: {self.list_of_actions[-5:]}\n"
             + "Use these to determine whether you are stuck or progressing."
         )
+    
+    def write_reasoning_to_file(self,direction_text: str,filepath: str = "../obs_exports/obs_reasoning.txt"):
+        with open(filepath, "w", encoding="utf-8") as f: 
+            f.write(direction_text)
 
     def call_llm(self,folder_name, llm_value, token, prompt):
         image_path = self.get_latest_image(os.path.join(folder_name, "*.png"))
@@ -390,8 +401,11 @@ class FreeRoamAgent:
                 self.list_of_actions.append(direction_text)
 
                 print(f"🧭 {llm_name} → {direction}")
+                reasoning_outputs = (f"Current Model: {llm_name} Latest Output: {direction} : {reasoning}")
                 print(reasoning)
 
+                self.write_reasoning_to_file(direction_text=reasoning_outputs)
+        
 
                 now = time.time()
                 if direction == "TAKE_PHOTO" and now - self.last_photo_time < self.PHOTO_COOLDOWN:
@@ -406,6 +420,7 @@ class FreeRoamAgent:
 
 
 if __name__ == "__main__":
+    time.sleep(15) ##allow for warmup and setup
     try:
         agent = FreeRoamAgent()
         agent.run()
