@@ -8,7 +8,7 @@
 
  ```
 
- A hackathon side-project, examining if it's possible for multimodal models to navigate in-game worlds.
+ A simple hackathon side-project, examining if it's possible for multimodal models to navigate in-game worlds.
 
  Two solutions: 
  1. Runner.py uses Switchbots to physically use navigation sticks on a controller and reach an end-goal.
