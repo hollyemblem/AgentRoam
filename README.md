@@ -11,7 +11,7 @@
 
  Two solutions: 
  1. Runner.py uses Switchbots to physically use navigation sticks on a controller and reach an end-goal.
- 2. freeroam_agent uses Python to trigger keyboard presses, controlling an agent in a simulated manner.
+ 2. freeroam_agent uses Python to trigger keyboard presses, controlling an agent on a simulated controller.
 
 Telemetry is tracked via LangFuse. 
 setup contains:
