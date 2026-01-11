@@ -40,7 +40,7 @@ class FreeRoamAgent:
         )
 
         # Agent timing / capture config
-        self.SAVE_INTERVAL = 2
+        self.SAVE_INTERVAL = 1
         self.PHOTO_COOLDOWN = 20
 
         # Directories
@@ -375,9 +375,9 @@ class FreeRoamAgent:
     def run(self):
         LLM_ROTATION = [
         #("fake", 'xummy', 'TAKE_PHOTO:0:Looks nice')
-        ("gpt-5.2-2025-12-11", os.getenv("OPEN_AI_TOKEN"), os.getenv("WD_FREEROAM_PROMPT")) #,
+        #("gpt-5.2-2025-12-11", os.getenv("OPEN_AI_TOKEN"), os.getenv("WD_FREEROAM_PROMPT")) #,
         #("claude-sonnet-4-5", os.getenv("CLAUDE_API_KEY"), os.getenv("WD_FREEROAM_PROMPT")) #,
-        #("llama-4-maverick-17b-128e-instruct", os.getenv("GROQ_API_KEY"), os.getenv("WD_LLAMA_FREEROAM_PROMPT")) #
+        ("llama-4-maverick-17b-128e-instruct", os.getenv("GROQ_API_KEY"), os.getenv("WD_LLAMA_FREEROAM_PROMPT")) #
         ]
 
 
@@ -401,7 +401,7 @@ class FreeRoamAgent:
                 self.list_of_actions.append(direction_text)
 
                 print(f"🧭 {llm_name} → {direction}")
-                reasoning_outputs = (f"Current Model: {llm_name} Latest Output: {direction} : {reasoning}")
+                reasoning_outputs = (f"Latest Output: {direction} : {reasoning} ")
                 print(reasoning)
 
                 self.write_reasoning_to_file(direction_text=reasoning_outputs)
