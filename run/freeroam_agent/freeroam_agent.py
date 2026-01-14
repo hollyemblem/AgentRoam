@@ -52,6 +52,8 @@ class FreeRoamAgent:
         self.last_photo_time = 0.0
         self.last_image_bytes = None
         self.list_of_actions = []
+        self.current_move_key = None
+        self.smooth_roam = False
 
         # Keyboard controller
         self.keyboard = Controller()
@@ -88,9 +90,9 @@ class FreeRoamAgent:
         )
         return m.group(1).upper() if m else None
 
-    def extract_length(self, text, default=1):
+    def extract_length(self, text, default=1.0):
         try:
-            return int(text)
+            return float(text)
         except (ValueError, TypeError):
             return default
 
@@ -114,28 +116,56 @@ class FreeRoamAgent:
         time.sleep(duration)
         self.keyboard.release(kc)
 
-    def directions_executor(self, direction, length=0):
+    def press_move_key(self, ch):
+        kc = KeyCode.from_char(ch.lower())
+        self.keyboard.press(kc)
+
+    def release_move_keys(self):
+        for ch in ("w", "a", "s", "d"):
+            try:
+                self.keyboard.release(KeyCode.from_char(ch))
+            except Exception:
+                pass
+        self.current_move_key = None
+
+    def directions_executor(self, direction, length=0, smooth_roam=False):
         d = direction.strip().upper()
         self.keyboard.release(Key.shift)
         self.keyboard.release(Key.ctrl)
         self.keyboard.release(Key.alt)
 
         if d == "MOVE_UP":
-            self.hold_char("w", length)
+            if smooth_roam:
+                self.press_move_key("w")
+                self.current_move_key = "w"
+            else:
+                self.hold_char("w", length)
         elif d == "MOVE_DOWN":
-            self.hold_char("s", length)
+            if smooth_roam:
+                self.press_move_key("s")
+                self.current_move_key = "s"
+            else:
+                self.hold_char("s", length)
         elif d == "MOVE_LEFT":
-            self.hold_char("a", length)
+            if smooth_roam:
+                self.press_move_key("a")
+                self.current_move_key = "a"
+            else:
+                self.hold_char("a", length)
         elif d == "MOVE_RIGHT":
-            self.hold_char("d", length)
+            if smooth_roam:
+                self.press_move_key("d")
+                self.current_move_key = "d"
+            else:
+                self.hold_char("d", length)
         elif d == "CAMERA_UP":
-            self.tap_char("j", length)
+            self.tap_char("j", int(length))
         elif d == "CAMERA_DOWN":
-            self.tap_char("u", length)
+            self.tap_char("u", int(length))
         elif d == "CAMERA_LEFT":
-            self.tap_char("h", length)
+            self.tap_char("h", int(length))
         elif d == "CAMERA_RIGHT":
-            self.tap_char("k", length)
+            self.tap_char("k", int(length))
         elif d == "TAKE_PHOTO":
             self.take_photo()
 
@@ -198,7 +228,7 @@ class FreeRoamAgent:
                 )
                 result = resp.text.strip()
 
-            elif llm_value == "gpt-5.2-2025-12-11":
+            elif "gpt" in llm_value.lower():
                 client = openai.OpenAI(api_key=token)
                 content = [
                     {
@@ -371,13 +401,13 @@ class FreeRoamAgent:
     # -------------------------
     # RUN LOOP
     # -------------------------
-
     def run(self):
         LLM_ROTATION = [
         #("fake", 'xummy', 'TAKE_PHOTO:0:Looks nice')
         #("gpt-5.2-2025-12-11", os.getenv("OPEN_AI_TOKEN"), os.getenv("WD_FREEROAM_PROMPT")) #,
         #("claude-sonnet-4-5", os.getenv("CLAUDE_API_KEY"), os.getenv("WD_FREEROAM_PROMPT")) #,
-        ("llama-4-maverick-17b-128e-instruct", os.getenv("GROQ_API_KEY"), os.getenv("WD_LLAMA_FREEROAM_PROMPT")) #
+        #("llama-4-maverick-17b-128e-instruct", os.getenv("GROQ_API_KEY"), os.getenv("WD_LLAMA_FREEROAM_PROMPT")) #
+        ("gpt-5-mini-2025-08-07", os.getenv("OPEN_AI_TOKEN"), os.getenv("WD_FREEROAM_PROMPT")) 
         ]
 
 
@@ -405,7 +435,9 @@ class FreeRoamAgent:
                 print(reasoning)
 
                 self.write_reasoning_to_file(direction_text=reasoning_outputs)
-        
+
+                if self.smooth_roam and self.current_move_key:
+                    self.release_move_keys()
 
                 now = time.time()
                 if direction == "TAKE_PHOTO" and now - self.last_photo_time < self.PHOTO_COOLDOWN:
@@ -413,7 +445,9 @@ class FreeRoamAgent:
                     continue
 
                 if direction != "UNKNOWN":
-                    self.directions_executor(direction, length)
+                    if self.smooth_roam and direction in {"MOVE_UP", "MOVE_DOWN", "MOVE_LEFT", "MOVE_RIGHT"}:
+                        length = length / 2.0
+                    self.directions_executor(direction, length, smooth_roam=self.smooth_roam)
                     if direction == "TAKE_PHOTO":
                         self.last_photo_time = now
                         print("📸 TAKE_PHOTO executed")
